@@ -134,13 +134,17 @@ async function createReport(user, reportType, title, documentMeta, summaryMeta, 
       }
       await batch.commit();
     } else if (normalizedReportType === 'copied-content' && Array.isArray(detailedResults)) {
-      const batch = db.batch();
       const pairsRef = reportRef.collection('documentPairs');
-
-      for (const pair of detailedResults) {
-        batch.set(pairsRef.doc(pair.pairId), sanitizeForFirestore(pair));
+      const CHUNK_SIZE = 15;
+      for (let i = 0; i < detailedResults.length; i += CHUNK_SIZE) {
+        const chunk = detailedResults.slice(i, i + CHUNK_SIZE);
+        const batch = db.batch();
+        for (const pair of chunk) {
+          const docId = pair.pairId || `pair_${i + 1}`;
+          batch.set(pairsRef.doc(docId), sanitizeForFirestore(pair));
+        }
+        await batch.commit();
       }
-      await batch.commit();
     }
 
     if (fallbackId !== reportRef.id) {
@@ -317,7 +321,18 @@ async function getUserReportById(reportId, userUid) {
       pairsSnap.forEach(pDoc => {
         documentPairs.push(serializeTimestamps(pDoc.data()));
       });
-      report.documentPairs = documentPairs;
+      if (documentPairs.length > 0) {
+        report.documentPairs = documentPairs;
+        report.pairResults = documentPairs;
+      } else if (cachedReport && Array.isArray(cachedReport.documentPairs) && cachedReport.documentPairs.length > 0) {
+        report.documentPairs = cachedReport.documentPairs;
+        report.pairResults = cachedReport.documentPairs;
+      } else if (Array.isArray(report.documentPairs) && report.documentPairs.length > 0) {
+        report.pairResults = report.documentPairs;
+      } else {
+        report.documentPairs = [];
+        report.pairResults = [];
+      }
     }
 
     return report;
@@ -338,11 +353,23 @@ async function getUserReportById(reportId, userUid) {
 /**
  * Deletes a report and all of its associated subcollection documents
  */
-async function deleteUserReport(reportId, userUid) {
+async function deleteUserReport(reportId, userUid, userRole = null) {
   const db = getDb();
+  const isAdmin = userRole === 'admin';
+
   if (!db) {
-    const err = new Error('Database is not initialized');
-    err.statusCode = 500;
+    if (memoryReportCache.has(reportId)) {
+      const cached = memoryReportCache.get(reportId);
+      if (cached.userId !== userUid && !isAdmin) {
+        const err = new Error('You do not have permission to delete this report');
+        err.statusCode = 403;
+        throw err;
+      }
+      memoryReportCache.delete(reportId);
+      return { success: true, message: 'Report deleted successfully' };
+    }
+    const err = new Error('Report not found');
+    err.statusCode = 404;
     throw err;
   }
 
@@ -350,6 +377,16 @@ async function deleteUserReport(reportId, userUid) {
   const doc = await docRef.get();
 
   if (!doc.exists) {
+    if (memoryReportCache.has(reportId)) {
+      const cached = memoryReportCache.get(reportId);
+      if (cached.userId !== userUid && !isAdmin) {
+        const err = new Error('You do not have permission to delete this report');
+        err.statusCode = 403;
+        throw err;
+      }
+      memoryReportCache.delete(reportId);
+      return { success: true, message: 'Report deleted successfully' };
+    }
     const err = new Error('Report not found');
     err.statusCode = 404;
     throw err;
@@ -357,9 +394,9 @@ async function deleteUserReport(reportId, userUid) {
 
   const data = doc.data();
 
-  // Strict ownership check
-  if (data.userId !== userUid) {
-    const err = new Error('You do not have permission to access this report');
+  // Strict ownership check (owner or admin)
+  if (data.userId !== userUid && !isAdmin) {
+    const err = new Error('You do not have permission to delete this report');
     err.statusCode = 403;
     throw err;
   }
@@ -367,14 +404,25 @@ async function deleteUserReport(reportId, userUid) {
   // Delete subcollection documents
   const batch = db.batch();
 
-  const findingsSnap = await docRef.collection('findings').get();
-  findingsSnap.forEach(fDoc => batch.delete(fDoc.ref));
+  try {
+    const findingsSnap = await docRef.collection('findings').get();
+    findingsSnap.forEach(fDoc => batch.delete(fDoc.ref));
+  } catch (fErr) {
+    console.warn('[ReportService] findings deletion fallback notice:', fErr.message);
+  }
 
-  const pairsSnap = await docRef.collection('documentPairs').get();
-  pairsSnap.forEach(pDoc => batch.delete(pDoc.ref));
+  try {
+    const pairsSnap = await docRef.collection('documentPairs').get();
+    pairsSnap.forEach(pDoc => batch.delete(pDoc.ref));
+  } catch (pErr) {
+    console.warn('[ReportService] documentPairs deletion fallback notice:', pErr.message);
+  }
 
   batch.delete(docRef);
   await batch.commit();
+
+  // Also remove from in-memory cache if present
+  memoryReportCache.delete(reportId);
 
   return {
     success: true,

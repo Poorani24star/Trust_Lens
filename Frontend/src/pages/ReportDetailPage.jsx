@@ -187,7 +187,14 @@ export default function ReportDetailPage() {
   const docName = report.document?.originalName || report.document?.fileName || report.title || 'Uploaded Document';
   const summary = report.summary || {};
   const findings = report.findings || report.statementResults || report.results || [];
-  const pairsList = report.documentPairs || [];
+  const pairsList =
+    (Array.isArray(report.documentPairs) && report.documentPairs.length > 0)
+      ? report.documentPairs
+      : (Array.isArray(report.pairResults) && report.pairResults.length > 0)
+      ? report.pairResults
+      : (Array.isArray(report.analysis?.documentPairs) && report.analysis.documentPairs.length > 0)
+      ? report.analysis.documentPairs
+      : [];
 
   const getFindingCategory = (s) => {
     const raw = (s.classification || '').toUpperCase();
@@ -251,7 +258,12 @@ export default function ReportDetailPage() {
     (Array.isArray(report.documents) ? report.documents.length : 0) ||
     (pairsList.length > 0 ? new Set(pairsList.flatMap(p => [p.documentA?.originalName || p.documentA?.documentId, p.documentB?.originalName || p.documentB?.documentId])).size : 1);
 
-  const totalComparisonsCount = summary.totalPairsCompared || summary.totalDocumentPairs || pairsList.length || 0;
+  const totalComparisonsCount =
+    summary.totalPairsCompared ??
+    summary.totalDocumentPairs ??
+    summary.documentPairsCompared ??
+    pairsList.length ??
+    0;
   const highSimCount = summary.highSimilarityCount ?? pairsList.filter(p => (p.overallMatchedContentPercentage ?? p.similarity ?? 0) >= 80).length;
   const potentialSimCount = summary.potentialSimilarityCount ?? pairsList.filter(p => { const score = p.overallMatchedContentPercentage ?? p.similarity ?? 0; return score >= 60 && score < 80; }).length;
   const noSimCount = summary.noSignificantSimilarityCount ?? pairsList.filter(p => (p.overallMatchedContentPercentage ?? p.similarity ?? 0) < 60).length;
@@ -318,11 +330,9 @@ export default function ReportDetailPage() {
             >
               <Download className="w-3.5 h-3.5" /> Download PDF
             </Button>
-            {!isAdminView && (
-              <Button variant="danger" size="sm" onClick={handleDelete} disabled={isDeleting}>
-                <Trash2 className="w-3.5 h-3.5" /> {isDeleting ? 'Deleting…' : 'Delete'}
-              </Button>
-            )}
+            <Button variant="danger" size="sm" onClick={handleDelete} disabled={isDeleting}>
+              <Trash2 className="w-3.5 h-3.5" /> {isDeleting ? 'Deleting…' : 'Delete Report'}
+            </Button>
           </div>
         </div>
 
@@ -337,14 +347,22 @@ export default function ReportDetailPage() {
                 </span>
                 {isErrorDetection && (
                   <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
-                    extractionMethod === 'ocr'
+                    extractionMethod === 'gemini-vision' || extractionMethod?.includes('vision')
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : extractionMethod === 'ocr'
                       ? 'bg-purple-50 text-purple-700 border-purple-200'
                       : extractionMethod === 'mixed'
                       ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                       : 'bg-slate-100 text-slate-700 border-slate-200'
                   }`}>
-                    {extractionMethod === 'ocr' ? <ScanSearch className="w-3 h-3" /> : extractionMethod === 'mixed' ? <ScanSearch className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
-                    {extractionMethod === 'ocr' ? 'Extraction: OCR (Scanned)' : extractionMethod === 'mixed' ? `Extraction: Mixed (Text + OCR${ocrPagesList.length > 0 ? ` p.${ocrPagesList.join(',')}` : ''})` : 'Extraction: Normal Text'}
+                    {extractionMethod === 'gemini-vision' || extractionMethod?.includes('vision') ? <ScanSearch className="w-3 h-3 text-emerald-600" /> : extractionMethod === 'ocr' || extractionMethod === 'mixed' ? <ScanSearch className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+                    {extractionMethod === 'gemini-vision' || extractionMethod?.includes('vision')
+                      ? 'Extraction: Gemini Vision (Handwritten)'
+                      : extractionMethod === 'ocr'
+                      ? 'Extraction: OCR (Scanned)'
+                      : extractionMethod === 'mixed'
+                      ? `Extraction: Mixed (Text + OCR${ocrPagesList.length > 0 ? ` p.${ocrPagesList.join(',')}` : ''})`
+                      : 'Extraction: Normal Text'}
                   </span>
                 )}
                 <span className="text-xs text-slate-400">•</span>

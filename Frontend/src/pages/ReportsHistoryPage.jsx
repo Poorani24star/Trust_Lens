@@ -56,6 +56,14 @@ export default function ReportsHistoryPage() {
     };
   }, [showCopiedContent]);
 
+  function handleDeleteReport(deletedId) {
+    setAllAnalyses(prev => {
+      const updated = prev.filter(item => item.id !== deletedId);
+      setSummary(getAnalysisSummary(updated));
+      return updated;
+    });
+  }
+
   function setFilter(key, value) {
     setFilters(f => ({ ...f, [key]: value }));
     setPage(1);
@@ -138,7 +146,7 @@ export default function ReportsHistoryPage() {
           <NoAnalysisResults onClear={clearFilters} />
         ) : (
           <section aria-label="Analysis list" className="space-y-4">
-            {paginated.map(a => <AnalysisCard key={a.id} analysis={a} />)}
+            {paginated.map(a => <AnalysisCard key={a.id} analysis={a} onDelete={handleDeleteReport} />)}
           </section>
         )}
 

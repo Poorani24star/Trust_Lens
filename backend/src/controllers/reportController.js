@@ -85,7 +85,7 @@ async function getReportById(req, res, next) {
  */
 async function deleteReport(req, res, next) {
   try {
-    const result = await reportService.deleteUserReport(req.params.reportId, req.user.uid);
+    const result = await reportService.deleteUserReport(req.params.reportId, req.user.uid, req.user.role);
     return res.status(200).json(result);
   } catch (err) {
     if (err.statusCode) {

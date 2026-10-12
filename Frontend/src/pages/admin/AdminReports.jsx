@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart2, FileText, AlertTriangle, CheckCircle, Search, ExternalLink } from 'lucide-react';
+import { BarChart2, FileText, AlertTriangle, CheckCircle, Search, ExternalLink, Trash2 } from 'lucide-react';
 import AdminLayout from '../../layouts/AdminLayout';
 import AdminStatCard from '../../components/admin/AdminStatCard';
 import Button from '../../components/Button';
 import { useToast } from '../../components/ui/ToastProvider';
 import { listAdminReports, getDashboardStats } from '../../services/adminService';
+import { deleteReport } from '../../services/reportService';
 import { ROLE_LABELS, ROLE_COLORS, ROLE_FALLBACK_COLOR } from '../../constants/roles';
 
 const PAGE_SIZE = 10;
@@ -45,6 +46,7 @@ export default function AdminReports() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
+  const [deletingId, setDeletingId] = useState(null);
 
   const [reportStats, setReportStats] = useState({
     totalAnalyses: 0,
@@ -117,6 +119,25 @@ export default function AdminReports() {
   useEffect(() => {
     fetchReportsList();
   }, [fetchReportsList]);
+
+  async function handleDeleteReport(reportId, reportTitle) {
+    if (!window.confirm(`Are you sure you want to delete the report "${reportTitle}"? This action cannot be undone.`)) return;
+    setDeletingId(reportId);
+    try {
+      await deleteReport(reportId);
+      showToast('Report deleted successfully.', 'success');
+      setReports(prev => prev.filter(r => r.id !== reportId));
+      setReportStats(prev => ({
+        ...prev,
+        totalAnalyses: Math.max(0, prev.totalAnalyses - 1),
+        reportsGenerated: Math.max(0, prev.reportsGenerated - 1),
+      }));
+    } catch (err) {
+      showToast(err.message || 'Failed to delete report.', 'error');
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const total = Math.max(reportStats.totalAnalyses, 1);
   const errorPct = Math.round((reportStats.errorDetectionAnalyses / total) * 100);
@@ -289,15 +310,28 @@ export default function AdminReports() {
                           <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={r.status} /></td>
                           <td className="px-4 py-3 text-slate-500 whitespace-nowrap text-xs">{dateText}</td>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => navigate(`/admin/reports/${r.id}`)}
-                              className="inline-flex items-center gap-1"
-                            >
-                              <span>View</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </Button>
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => navigate(`/admin/reports/${r.id}`)}
+                                className="inline-flex items-center gap-1"
+                              >
+                                <span>View</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => handleDeleteReport(r.id, r.title || docName)}
+                                disabled={deletingId === r.id}
+                                className="inline-flex items-center gap-1"
+                                aria-label={`Delete report ${r.title || docName}`}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>{deletingId === r.id ? 'Deleting…' : 'Delete'}</span>
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       );

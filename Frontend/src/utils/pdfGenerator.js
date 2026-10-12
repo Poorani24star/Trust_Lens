@@ -81,7 +81,7 @@ export function generatePdfReport(report) {
 
   doc.text(`Status: ${(report.status || 'completed').toUpperCase()}`, margin, y);
   if (isErrorDetection) {
-    doc.text(`Extraction: ${extractionMethod === 'ocr' ? 'OCR (Scanned Document)' : extractionMethod === 'mixed' ? 'Mixed (Text + OCR)' : 'Normal Text Extraction'}`, margin + 220, y);
+    doc.text(`Extraction: ${extractionMethod.includes('vision') ? 'Gemini Vision (Handwritten)' : extractionMethod === 'ocr' ? 'OCR (Scanned Document)' : extractionMethod === 'mixed' ? 'Mixed (Text + OCR)' : 'Normal Text Extraction'}`, margin + 220, y);
   }
   y += 20;
 

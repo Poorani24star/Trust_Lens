@@ -520,7 +520,7 @@ async function analyzeErrorDetectionDocument(user, temporaryUploadId, options = 
 
   const overallExtractionMethod = allDocumentsMeta.length === 1
     ? (allDocumentsMeta[0]?.extractionMethod || 'normal')
-    : (allDocumentsMeta.some(d => d.extractionMethod === 'ocr' || d.extractionMethod === 'mixed') ? 'mixed' : 'normal');
+    : (allDocumentsMeta.some(d => d.extractionMethod === 'ocr' || d.extractionMethod === 'mixed' || d.extractionMethod === 'gemini-vision' || d.extractionMethod?.includes('ocr') || d.extractionMethod?.includes('vision')) ? 'mixed' : 'normal');
 
   const allOcrPages = allDocumentsMeta.flatMap(d => d.ocrPages || []);
 

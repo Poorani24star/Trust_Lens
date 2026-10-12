@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { FileText, Archive, CheckCircle, Loader2, AlertTriangle, Download } from 'lucide-react';
+import { FileText, Archive, CheckCircle, Loader2, AlertTriangle, Download, Trash2 } from 'lucide-react';
 import Button from '../Button';
 import { useState } from 'react';
 import Toast from '../ui/Toast';
 
-import { getReportDetails } from '../../services/reportService';
+import { getReportDetails, deleteReport } from '../../services/reportService';
 import { generatePdfReport } from '../../utils/pdfGenerator';
 
 // ── Type badge ────────────────────────────────────────────────────────────────
@@ -35,9 +35,10 @@ const REPORT_STATUS = {
   },
 };
 
-export default function AnalysisCard({ analysis }) {
+export default function AnalysisCard({ analysis, onDelete }) {
   const navigate = useNavigate();
   const [toast, setToast] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { id, fileName, typeLabel, type, date, time, result, detail, reportStatus } = analysis;
   const rs = REPORT_STATUS[reportStatus] ?? REPORT_STATUS.available;
@@ -61,6 +62,25 @@ export default function AnalysisCard({ analysis }) {
     } catch (err) {
       console.error('[AnalysisCard] Download error:', err);
       setToast({ message: err.message || 'Failed to download PDF report.', variant: 'error' });
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`Are you sure you want to delete the report for "${safeFileName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deleteReport(id);
+      setToast({ message: 'Report deleted successfully.', variant: 'success' });
+      if (typeof onDelete === 'function') {
+        onDelete(id);
+      }
+    } catch (err) {
+      console.error('[AnalysisCard] Delete error:', err);
+      setToast({ message: err.message || 'Failed to delete report.', variant: 'error' });
+      setIsDeleting(false);
     }
   }
 
@@ -105,44 +125,59 @@ export default function AnalysisCard({ analysis }) {
       {toast && <Toast message={toast.message} variant={toast.variant} onDismiss={() => setToast(null)} />}
 
       {/* Actions */}
-      <div className="flex flex-wrap gap-2 pt-1">
-        {reportStatus === 'available' && (
-          <>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => navigate(`/reports/${id}`)}
-              aria-label={`View report for ${fileName}`}
-            >
-              View Report
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+        <div className="flex flex-wrap gap-2">
+          {reportStatus === 'available' && (
+            <>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate(`/reports/${id}`)}
+                aria-label={`View report for ${fileName}`}
+              >
+                View Report
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownload}
+                aria-label={`Download PDF report for ${fileName}`}
+              >
+                <Download className="w-3.5 h-3.5" aria-hidden="true" />
+                Download PDF
+              </Button>
+            </>
+          )}
+          {reportStatus === 'generating' && (
+            <Button variant="outline" size="sm" disabled aria-label="Report is being generated">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+              Generating…
             </Button>
+          )}
+          {reportStatus === 'failed' && (
             <Button
               variant="outline"
               size="sm"
-              onClick={handleDownload}
-              aria-label={`Download PDF report for ${fileName}`}
+              onClick={() => navigate(type === 'error-detection' ? '/error-detection' : '/copied-content')}
+              aria-label={`Retry analysis for ${fileName}`}
             >
-              <Download className="w-3.5 h-3.5" aria-hidden="true" />
-              Download PDF
+              Try Again
             </Button>
-          </>
-        )}
-        {reportStatus === 'generating' && (
-          <Button variant="outline" size="sm" disabled aria-label="Report is being generated">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-            Generating…
-          </Button>
-        )}
-        {reportStatus === 'failed' && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(type === 'error-detection' ? '/error-detection' : '/copied-content')}
-            aria-label={`Retry analysis for ${fileName}`}
-          >
-            Try Again
-          </Button>
-        )}
+          )}
+        </div>
+
+        {/* Delete Report Button */}
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={handleDelete}
+          disabled={isDeleting}
+          aria-label={`Delete report for ${fileName}`}
+          className="ml-auto"
+        >
+          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+          {isDeleting ? 'Deleting…' : 'Delete'}
+        </Button>
       </div>
     </article>
   );

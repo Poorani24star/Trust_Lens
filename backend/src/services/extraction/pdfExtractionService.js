@@ -2,6 +2,7 @@ const fs = require('fs');
 const pdfParse = require('pdf-parse');
 const { normalizeText } = require('./textNormalizationService');
 const { extractBufferOcrText, createOcrWorker, cleanOcrText } = require('./ocrExtractionService');
+const { transcribeWithVision } = require('./visionOcrService');
 
 /**
  * Checks whether extracted text for a page has sufficient meaningful words to avoid OCR
@@ -14,10 +15,12 @@ function isTextSufficientForClaimExtraction(text) {
   const trimmed = text.trim();
   if (trimmed.length < 25) return false;
 
-  // Strip page markers and running footers before counting
+  // Strip page markers, scanner stamps, and running footers before counting
   const cleaned = trimmed
     .replace(/--\s*\d+\s+of\s+\d+\s*--/gi, '')
     .replace(/^Page\s+\d+(\s+of\s+\d+)?$/gmi, '')
+    .replace(/Scanned (by|with) [^\n\r]+/gi, '')
+    .replace(/CamScanner/gi, '')
     .replace(/^\s*\d+\s*$/gm, '')
     .trim();
 
@@ -79,6 +82,7 @@ async function extractPdfText(filePath) {
     const rawPagesArray = textRes.pages || [];
 
     const pageResults = [];
+    let visionUsedCount = 0;
     let ocrUsedCount = 0;
     let normalUsedCount = 0;
     const ocrPagesList = [];
@@ -103,10 +107,6 @@ async function extractPdfText(filePath) {
         ocrPagesList.push(p);
 
         try {
-          if (!ocrWorker) {
-            ocrWorker = await createOcrWorker();
-          }
-
           let pageImageBuffer = null;
 
           // Attempt 1: Render page screenshot via parser.getScreenshot
@@ -132,30 +132,61 @@ async function extractPdfText(filePath) {
           }
 
           if (pageImageBuffer) {
-            const ocrRes = await extractBufferOcrText(pageImageBuffer, ocrWorker);
-            const cleanedOcr = cleanOcrText(ocrRes.text);
+            let pageTextFound = false;
 
-            if (cleanedOcr && cleanedOcr.length > 0) {
-              ocrUsedCount++;
-              pageResults.push({
-                pageNumber: p,
-                method: 'ocr',
-                text: cleanedOcr,
-                textLength: cleanedOcr.length,
-                confidence: ocrRes.confidence || 0,
-                wordCount: cleanedOcr.split(/\s+/).filter(Boolean).length,
-              });
-            } else {
-              // OCR produced no readable text on this page
-              pageResults.push({
-                pageNumber: p,
-                method: 'ocr_unreadable',
-                text: '',
-                textLength: 0,
-                confidence: 0,
-                wordCount: 0,
-                warning: `Page ${p} could not be recognized reliably via OCR.`,
-              });
+            // 1. High-accuracy Multimodal Vision OCR (for handwriting and complex scanned documents)
+            if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== '') {
+              try {
+                console.log(`[PdfExtractionService] Transcribing scanned/handwritten page ${p} with Gemini Vision...`);
+                const visionRes = await transcribeWithVision(pageImageBuffer, 'image/png');
+                if (visionRes.success && visionRes.text && visionRes.text.trim().length > 0) {
+                  const cleanedVision = normalizeText(visionRes.text);
+                  visionUsedCount++;
+                  pageTextFound = true;
+                  pageResults.push({
+                    pageNumber: p,
+                    method: 'gemini-vision',
+                    text: cleanedVision,
+                    textLength: cleanedVision.length,
+                    confidence: visionRes.confidence || 98,
+                    wordCount: cleanedVision.split(/\s+/).filter(Boolean).length,
+                  });
+                }
+              } catch (visionErr) {
+                console.warn(`[PdfExtractionService] Vision OCR failed on page ${p}, falling back to Tesseract:`, visionErr.message);
+              }
+            }
+
+            // 2. Offline / Fallback: Tesseract.js OCR
+            if (!pageTextFound) {
+              if (!ocrWorker) {
+                ocrWorker = await createOcrWorker();
+              }
+              const ocrRes = await extractBufferOcrText(pageImageBuffer, ocrWorker);
+              const cleanedOcr = cleanOcrText(ocrRes.text);
+
+              if (cleanedOcr && cleanedOcr.length > 0) {
+                ocrUsedCount++;
+                pageResults.push({
+                  pageNumber: p,
+                  method: 'ocr',
+                  text: cleanedOcr,
+                  textLength: cleanedOcr.length,
+                  confidence: ocrRes.confidence || 0,
+                  wordCount: cleanedOcr.split(/\s+/).filter(Boolean).length,
+                });
+              } else {
+                // OCR produced no readable text on this page
+                pageResults.push({
+                  pageNumber: p,
+                  method: 'ocr_unreadable',
+                  text: '',
+                  textLength: 0,
+                  confidence: 0,
+                  wordCount: 0,
+                  warning: `Page ${p} could not be recognized reliably via OCR.`,
+                });
+              }
             }
           } else {
             // No image or screenshot could be rendered for this page
@@ -183,9 +214,11 @@ async function extractPdfText(filePath) {
 
     // Determine overall document extraction method
     let finalExtractionMethod = 'normal';
-    if (ocrUsedCount > 0 && normalUsedCount > 0) {
+    if (normalUsedCount > 0 && (visionUsedCount > 0 || ocrUsedCount > 0)) {
       finalExtractionMethod = 'mixed';
-    } else if (ocrUsedCount > 0 && normalUsedCount === 0) {
+    } else if (visionUsedCount > 0) {
+      finalExtractionMethod = 'gemini-vision';
+    } else if (ocrUsedCount > 0) {
       finalExtractionMethod = 'ocr';
     } else {
       finalExtractionMethod = 'normal';

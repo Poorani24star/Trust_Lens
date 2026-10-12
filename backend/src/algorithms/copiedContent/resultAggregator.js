@@ -215,7 +215,9 @@ function buildOverallAnalysisSummary(totalDocuments, pairResults) {
     totalDocuments,
     totalDocumentPairs: pairResults.length,
     documentPairsCompared: pairResults.length, // UI backwards compatibility
+    totalPairsCompared: pairResults.length, // Frontend analysisService compatibility
     pairsWithMatches: totalPairsWithMatches,
+    matchingPairs: totalPairsWithMatches, // Frontend analysisService compatibility
     totalExactMatches,
     totalNearMatches,
     totalPartialMatches,

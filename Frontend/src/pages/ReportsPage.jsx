@@ -29,6 +29,11 @@ export default function ReportsPage() {
     getReportSummary().then(setSummary);
   }, []);
 
+  function handleDeleteReport(deletedId) {
+    setAllReports(prev => prev.filter(r => r.id !== deletedId));
+    getReportSummary().then(setSummary);
+  }
+
   function setFilter(key, value) {
     setFilters(f => ({ ...f, [key]: value }));
     setPage(1);
@@ -97,7 +102,7 @@ export default function ReportsPage() {
           <NoReportResults onClear={clearFilters} />
         ) : (
           <section aria-label="Reports list" className="space-y-3">
-            {paginated.map(report => <ReportCard key={report.id} report={report} />)}
+            {paginated.map(report => <ReportCard key={report.id} report={report} onDelete={handleDeleteReport} />)}
           </section>
         )}
 

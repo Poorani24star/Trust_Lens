@@ -97,13 +97,24 @@ export async function getAnalyses(params = {}) {
       const contradictions = r.summary?.potentialContradictions ?? r.summary?.incorrect ?? r.summary?.contradictions ?? 0;
       const totalStmts = r.summary?.totalStatements ?? r.summary?.analyzedStatements ?? 0;
 
+      const pairsCompared =
+        r.summary?.totalPairsCompared ??
+        r.summary?.documentPairsCompared ??
+        r.summary?.totalDocumentPairs ??
+        (Array.isArray(r.documentPairs) ? r.documentPairs.length : (Array.isArray(r.pairResults) ? r.pairResults.length : 0));
+
+      const matchingPairs =
+        r.summary?.matchingPairs ??
+        r.summary?.pairsWithMatches ??
+        0;
+
       const resultText = isErrorDetection
         ? `${verified} Verified · ${contradictions} Contradictions`
-        : (r.summary?.matchingPairs ? `${r.summary.matchingPairs} matching pairs` : 'Analysis completed');
+        : (matchingPairs > 0 ? `${matchingPairs} matching pairs` : 'Analysis completed');
 
       const detailText = isErrorDetection
         ? `${totalStmts} statements analyzed against reference sources`
-        : (`${r.summary?.totalPairsCompared || 0} pairs compared · ${r.summary?.matchingPairs || 0} matching pairs`);
+        : (`${pairsCompared} pairs compared · ${matchingPairs} matching pairs`);
 
       return {
         id: r.id || r.reportId,
