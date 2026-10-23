@@ -192,24 +192,82 @@ function buildOverallAnalysisSummary(totalDocuments, pairResults) {
   let totalPartialMatches = 0;
   let highestMatchedContentPercentage = 0;
 
-  for (const pair of pairResults) {
-    if (pair.totalMatches > 0 || pair.overallMatchedContentPercentage > 0) {
-      totalPairsWithMatches++;
-    }
+  let highSimilarityCount = 0;
+  let potentialSimilarityCount = 0;
+  let noSignificantSimilarityCount = 0;
 
+  const pairwiseSummary = pairResults.map((pair, idx) => {
+    const nameA = pair.documentA?.originalName || pair.documentA?.name || 'Document A';
+    const nameB = pair.documentB?.originalName || pair.documentB?.name || 'Document B';
+    const similarity = pair.overallMatchedContentPercentage ?? pair.similarity ?? 0;
     const exact = pair.comparison ? pair.comparison.exactMatchCount : (pair.exactMatches || 0);
     const near = pair.comparison ? pair.comparison.nearMatchCount : (pair.nearMatches || 0);
     const partial = pair.comparison ? pair.comparison.partialMatchCount : 0;
-    const score = pair.overallMatchedContentPercentage || 0;
+    const totalMatches = pair.totalMatches ?? (exact + near + partial);
 
-    totalExactMatches += exact;
-    totalNearMatches += near;
-    totalPartialMatches += partial;
+    let status = 'clean';
+    let statusLabel = 'No Significant Similarity';
+    if (similarity >= 80) {
+      status = 'high';
+      statusLabel = 'High Similarity Detected';
+      highSimilarityCount++;
+    } else if (similarity >= 60) {
+      status = 'potential';
+      statusLabel = 'Potential Copied Content';
+      potentialSimilarityCount++;
+    } else {
+      noSignificantSimilarityCount++;
+    }
 
-    if (score > highestMatchedContentPercentage) {
-      highestMatchedContentPercentage = score;
+    return {
+      pairId: pair.pairId || `pair-${idx + 1}`,
+      documentA: nameA,
+      documentB: nameB,
+      similarity,
+      status,
+      statusLabel,
+      exactMatches: exact,
+      nearMatches: near + partial,
+      totalMatches,
+      isFlagged: similarity >= 60,
+    };
+  }).sort((a, b) => b.similarity - a.similarity);
+
+  // Group by document to build a per-document copy breakdown
+  const documentSummaryMap = new Map();
+  for (const pair of pairwiseSummary) {
+    for (const [docName, otherName] of [[pair.documentA, pair.documentB], [pair.documentB, pair.documentA]]) {
+      if (!documentSummaryMap.has(docName)) {
+        documentSummaryMap.set(docName, {
+          documentName: docName,
+          highestSimilarity: 0,
+          mostCopiedWith: null,
+          flaggedCount: 0,
+          relatedDocuments: [],
+        });
+      }
+      const entry = documentSummaryMap.get(docName);
+      if (pair.similarity > entry.highestSimilarity) {
+        entry.highestSimilarity = pair.similarity;
+        entry.mostCopiedWith = otherName;
+      }
+      if (pair.similarity >= 60) {
+        entry.flaggedCount++;
+      }
+      entry.relatedDocuments.push({
+        documentName: otherName,
+        similarity: pair.similarity,
+        status: pair.status,
+        statusLabel: pair.statusLabel,
+        totalMatches: pair.totalMatches,
+      });
     }
   }
+
+  const documentBreakdown = Array.from(documentSummaryMap.values()).map(doc => ({
+    ...doc,
+    relatedDocuments: doc.relatedDocuments.sort((a, b) => b.similarity - a.similarity),
+  })).sort((a, b) => b.highestSimilarity - a.highestSimilarity);
 
   return {
     totalDocuments,
@@ -222,6 +280,11 @@ function buildOverallAnalysisSummary(totalDocuments, pairResults) {
     totalNearMatches,
     totalPartialMatches,
     highestMatchedContentPercentage,
+    highSimilarityCount,
+    potentialSimilarityCount,
+    noSignificantSimilarityCount,
+    pairwiseSummary,
+    documentBreakdown,
     algorithm: 'pairwise_shingling_jaccard_levenshtein_hashing',
   };
 }

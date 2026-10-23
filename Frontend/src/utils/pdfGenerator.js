@@ -258,6 +258,69 @@ export function generatePdfReport(report) {
       doc.text('No high-overlap document pairs identified.', margin, y);
       y += 20;
     } else {
+      // 1. Executive Summary Table for Staff (Quick Scan)
+      checkPageOverflow(70);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(30, 41, 59);
+      doc.text('Executive Document Copy Summary (Staff Fast-Scan)', margin, y);
+      y += 12;
+
+      // Table Header
+      doc.setFillColor(241, 245, 249);
+      doc.rect(margin, y, contentWidth, 18, 'F');
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(71, 85, 105);
+      doc.text('Document Pair (Doc A <-> Doc B)', margin + 6, y + 12);
+      doc.text('Similarity %', margin + 280, y + 12);
+      doc.text('Matches', margin + 360, y + 12);
+      doc.text('Risk Level', margin + 430, y + 12);
+      y += 18;
+
+      // Summary Rows
+      pairs.forEach((p, pIdx) => {
+        checkPageOverflow(20);
+        const nameA = p.documentA?.originalName || p.documentA?.name || p.docA?.name || p.doc1 || 'Doc A';
+        const nameB = p.documentB?.originalName || p.documentB?.name || p.docB?.name || p.doc2 || 'Doc B';
+        const score = p.overallMatchedContentPercentage ?? p.similarity ?? p.similarityScore ?? p.comparison?.overallSimilarity ?? 0;
+        const totalMatches = p.totalMatches ?? p.matches?.length ?? (((p.exactMatches || 0) + (p.nearMatches || 0)) || 0);
+        const riskLabel = score >= 80 ? 'High Risk' : score >= 60 ? 'Potential' : 'Clean';
+
+        if (pIdx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin, y, contentWidth, 16, 'F');
+        }
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(15, 23, 42);
+        const pairLabel = doc.splitTextToSize(`${nameA}  <->  ${nameB}`, 260);
+        doc.text(pairLabel[0] || '', margin + 6, y + 11);
+
+        doc.setFont('helvetica', 'bold');
+        if (score >= 80) doc.setTextColor(185, 28, 28);
+        else if (score >= 60) doc.setTextColor(180, 83, 9);
+        else doc.setTextColor(22, 101, 52);
+        doc.text(`${score}%`, margin + 280, y + 11);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(71, 85, 105);
+        doc.text(`${totalMatches}`, margin + 360, y + 11);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text(riskLabel, margin + 430, y + 11);
+        y += 16;
+      });
+
+      y += 16;
+      checkPageOverflow(30);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(30, 41, 59);
+      doc.text('Detailed Pair Comparisons & Passages', margin, y);
+      y += 14;
+
       pairs.forEach((pair, idx) => {
         checkPageOverflow(50);
         const nameA = pair.documentA?.originalName || pair.documentA?.name || pair.docA?.name || pair.doc1 || 'Document A';

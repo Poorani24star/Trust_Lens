@@ -11,6 +11,7 @@ import { getAdminReportDetails } from '../services/adminService';
 import { generatePdfReport } from '../utils/pdfGenerator';
 import { ROLE_LABELS, ROLE_COLORS, ROLE_FALLBACK_COLOR } from '../constants/roles';
 import CopiedContentResultCard from '../components/copiedContent/CopiedContentResultCard';
+import CopiedDocumentSummaryModule from '../components/copiedContent/CopiedDocumentSummaryModule';
 import SideBySideDiffViewer from '../components/copiedContent/SideBySideDiffViewer';
 
 function ReportStatusBadge({ status }) {
@@ -63,6 +64,21 @@ export default function ReportDetailPage() {
   const [statementFilter, setStatementFilter] = useState('all');
   const [expandedFindings, setExpandedFindings] = useState({});
   const [activeDiffPair, setActiveDiffPair] = useState(null);
+
+  const handleScrollToPair = (pairId) => {
+    if (pairId === undefined || pairId === null) return;
+    let targetEl = document.getElementById(`pair-card-${pairId}`);
+    if (!targetEl) {
+      targetEl = document.querySelector(`[id$="${pairId}"]`);
+    }
+    if (targetEl) {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      targetEl.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2');
+      setTimeout(() => {
+        targetEl.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2');
+      }, 2500);
+    }
+  };
 
   const toggleFindingExpand = (key) => {
     setExpandedFindings(prev => ({
@@ -454,6 +470,16 @@ export default function ReportDetailPage() {
             </div>
           )}
         </div>
+
+        {/* Copied Content Summary Module (Fast scan for staff) */}
+        {isCopiedContent && pairsList.length > 0 && (
+          <CopiedDocumentSummaryModule
+            pairs={pairsList}
+            summary={summary}
+            onOpenDiff={(pair) => setActiveDiffPair(pair)}
+            onScrollToPair={handleScrollToPair}
+          />
+        )}
 
         {(isErrorDetection || isCopiedContent) && (
           <section className="bg-white rounded-2xl border border-slate-200 shadow-card p-6 space-y-5">

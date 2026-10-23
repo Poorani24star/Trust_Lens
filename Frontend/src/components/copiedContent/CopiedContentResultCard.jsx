@@ -60,7 +60,10 @@ export default function CopiedContentResultCard({ pair, pairIndex }) {
 
   return (
     <>
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-0 transition-all">
+      <div
+        id={pair.pairId ? `pair-card-${pair.pairId}` : `pair-card-${pairIndex}`}
+        className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-0 transition-all"
+      >
         {/* Pair Header Summary */}
         <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/50">
           <div className="space-y-1.5 min-w-0">
